@@ -1,7 +1,8 @@
-namespace SmartYouTubeDownloader.Models;
-
-public enum DownloadMode
+namespace SmartYouTubeDownloader.Models
 {
-    Video,
-    AudioOnly
+    public enum DownloadMode
+    {
+        Video,
+        AudioOnly
+    }
 }

@@ -4,8 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
-namespace SmartYouTubeDownloader.Services;
-
+namespace SmartYouTubeDownloader.Services
+{
 public sealed class ToolLocator
 {
     private static readonly string[] YtDlpNames = { "yt-dlp.exe", "yt-dlp" };
@@ -64,4 +64,5 @@ public sealed class ToolLocator
 
         return null;
     }
+}
 }
