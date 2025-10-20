@@ -722,11 +722,11 @@ public partial class MainForm : Form
             MaxHeight = maxHeight;
         }
 
-        public string Label { get; }
+        public string Label { get; private set; }
 
-        public string? FormatId { get; }
+        public string? FormatId { get; private set; }
 
-        public int? MaxHeight { get; }
+        public int? MaxHeight { get; private set; }
 
         public override string ToString()
         {

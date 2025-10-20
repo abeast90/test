@@ -112,13 +112,8 @@ public sealed class YtDlpService
 
         if (request.UseProxy && !string.IsNullOrWhiteSpace(request.ProxyAddress))
         {
-            if (startInfo.Environment == null)
-            {
-                startInfo.Environment = new System.Collections.Generic.Dictionary<string, string>();
-            }
-
-            startInfo.Environment["http_proxy"] = request.ProxyAddress;
-            startInfo.Environment["https_proxy"] = request.ProxyAddress;
+            startInfo.EnvironmentVariables["http_proxy"] = request.ProxyAddress;
+            startInfo.EnvironmentVariables["https_proxy"] = request.ProxyAddress;
         }
 
         var process = Process.Start(startInfo);
