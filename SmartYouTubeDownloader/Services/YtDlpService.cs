@@ -3,17 +3,17 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using SmartYouTubeDownloader.Models;
 
-namespace SmartYouTubeDownloader.Services;
-
+namespace SmartYouTubeDownloader.Services
+{
 public sealed class YtDlpService
 {
-    private static readonly Regex DownloadPercentRegex = new(@"\[download\]\s+(?<percent>\d{1,3}(?:\.\d+)?)%", RegexOptions.Compiled);
+    private static readonly Regex DownloadPercentRegex = new Regex(@"\[download\]\s+(?<percent>\d{1,3}(?:\.\d+)?)%", RegexOptions.Compiled);
     private readonly string _ytDlpPath;
 
     public YtDlpService(string ytDlpPath)
@@ -33,52 +33,64 @@ public sealed class YtDlpService
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start yt-dlp.");
-        var outputTask = process.StandardOutput.ReadToEndAsync();
-        var errorTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
-        var json = outputTask.Result;
-        if (string.IsNullOrWhiteSpace(json))
+        var process = Process.Start(startInfo);
+        if (process == null)
         {
-            var error = errorTask.Result;
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "yt-dlp returned no data." : error);
+            throw new InvalidOperationException("Failed to start yt-dlp.");
         }
 
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        var title = root.GetProperty("title").GetString() ?? "Unknown";
-        var duration = root.TryGetProperty("duration", out var durationElement) ? TimeSpan.FromSeconds(durationElement.GetDouble()) : TimeSpan.Zero;
-        var id = root.TryGetProperty("id", out var idElement) ? idElement.GetString() ?? string.Empty : string.Empty;
-        var thumb = root.TryGetProperty("thumbnail", out var thumbElement) ? thumbElement.GetString() ?? string.Empty : string.Empty;
-
-        var formats = new List<VideoFormat>();
-        if (root.TryGetProperty("formats", out var formatsElement))
+        try
         {
-            foreach (var element in formatsElement.EnumerateArray())
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
+            var json = outputTask.Result;
+            if (string.IsNullOrWhiteSpace(json))
             {
-                var format = new VideoFormat
-                {
-                    Id = element.TryGetProperty("format_id", out var idProp) ? idProp.GetString() ?? string.Empty : string.Empty,
-                    Extension = element.TryGetProperty("ext", out var extProp) ? extProp.GetString() ?? string.Empty : string.Empty,
-                    VideoCodec = element.TryGetProperty("vcodec", out var vCodecProp) ? vCodecProp.GetString() ?? string.Empty : string.Empty,
-                    AudioCodec = element.TryGetProperty("acodec", out var aCodecProp) ? aCodecProp.GetString() ?? string.Empty : string.Empty,
-                    Height = element.TryGetProperty("height", out var heightProp) && heightProp.ValueKind == JsonValueKind.Number ? (int?)heightProp.GetInt32() : null
-                };
-                formats.Add(format);
+                var error = errorTask.Result;
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "yt-dlp returned no data." : error);
             }
+
+            var root = JObject.Parse(json);
+            var title = root.Value<string>("title") ?? "Unknown";
+            var durationSeconds = root.Value<double?>("duration");
+            var duration = durationSeconds.HasValue ? TimeSpan.FromSeconds(durationSeconds.Value) : TimeSpan.Zero;
+            var id = root.Value<string>("id") ?? string.Empty;
+            var thumb = root.Value<string>("thumbnail") ?? string.Empty;
+
+            var formats = new List<VideoFormat>();
+            if (root.TryGetValue("formats", out var formatsToken) && formatsToken is JArray formatsArray)
+            {
+                foreach (var element in formatsArray)
+                {
+                    var format = new VideoFormat
+                    {
+                        Id = element.Value<string>("format_id") ?? string.Empty,
+                        Extension = element.Value<string>("ext") ?? string.Empty,
+                        VideoCodec = element.Value<string>("vcodec") ?? string.Empty,
+                        AudioCodec = element.Value<string>("acodec") ?? string.Empty,
+                        Height = element["height"]?.Type == JTokenType.Integer ? element.Value<int?>("height") : null
+                    };
+                    formats.Add(format);
+                }
+            }
+
+            formats.Sort((a, b) => Nullable.Compare(b.Height, a.Height));
+
+            return new VideoMetadata
+            {
+                Title = title,
+                Duration = duration,
+                ThumbnailUrl = thumb,
+                Formats = formats,
+                Id = id
+            };
         }
-
-        formats.Sort((a, b) => Nullable.Compare(b.Height, a.Height));
-
-        return new VideoMetadata
+        finally
         {
-            Title = title,
-            Duration = duration,
-            ThumbnailUrl = thumb,
-            Formats = formats,
-            Id = id
-        };
+            process.Dispose();
+        }
     }
 
     public async Task DownloadAsync(DownloadRequest request, IProgress<DownloadProgress> progress, CancellationToken cancellationToken)
@@ -100,24 +112,40 @@ public sealed class YtDlpService
 
         if (request.UseProxy && !string.IsNullOrWhiteSpace(request.ProxyAddress))
         {
-            startInfo.Environment ??= new System.Collections.Generic.Dictionary<string, string>();
+            if (startInfo.Environment == null)
+            {
+                startInfo.Environment = new System.Collections.Generic.Dictionary<string, string>();
+            }
+
             startInfo.Environment["http_proxy"] = request.ProxyAddress;
             startInfo.Environment["https_proxy"] = request.ProxyAddress;
         }
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start yt-dlp.");
-        var stdoutTask = ReadDownloadProgressAsync(process.StandardOutput, progress, cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync();
-
-        await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-        if (process.ExitCode != 0)
+        var process = Process.Start(startInfo);
+        if (process == null)
         {
-            throw new InvalidOperationException(stderrTask.Result);
+            throw new InvalidOperationException("Failed to start yt-dlp.");
         }
 
-        progress.Report(new DownloadProgress { Percent = 70, Status = "Download complete", Phase = "Completed" });
+        try
+        {
+            var stdoutTask = ReadDownloadProgressAsync(process.StandardOutput, progress, cancellationToken);
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(stderrTask.Result);
+            }
+
+            progress.Report(new DownloadProgress { Percent = 70, Status = "Download complete", Phase = "Completed" });
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     private string BuildArguments(DownloadRequest request)
@@ -158,7 +186,7 @@ public sealed class YtDlpService
         }
 
         args.Add($"\"{request.Url}\"");
-        return string.Join(' ', args);
+        return string.Join(" ", args);
     }
 
     private static string BuildFormatString(DownloadRequest request)
@@ -201,4 +229,5 @@ public sealed class YtDlpService
             }
         }
     }
+}
 }

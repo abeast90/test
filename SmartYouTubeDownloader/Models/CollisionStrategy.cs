@@ -1,8 +1,9 @@
-namespace SmartYouTubeDownloader.Models;
-
-public enum CollisionStrategy
+namespace SmartYouTubeDownloader.Models
 {
-    Skip,
-    Overwrite,
-    AutoRename
+    public enum CollisionStrategy
+    {
+        Skip,
+        Overwrite,
+        AutoRename
+    }
 }

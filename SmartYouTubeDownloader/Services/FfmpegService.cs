@@ -8,11 +8,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using SmartYouTubeDownloader.Models;
 
-namespace SmartYouTubeDownloader.Services;
-
+namespace SmartYouTubeDownloader.Services
+{
 public sealed class FfmpegService
 {
-    private static readonly Regex TimeRegex = new(@"time=(?<time>\d{2}:\d{2}:\d{2}\.\d+)", RegexOptions.Compiled);
+    private static readonly Regex TimeRegex = new Regex(@"time=(?<time>\d{2}:\d{2}:\d{2}\.\d+)", RegexOptions.Compiled);
     private readonly string _ffmpegPath;
 
     public FfmpegService(string ffmpegPath)
@@ -26,7 +26,7 @@ public sealed class FfmpegService
         var title = Path.GetFileNameWithoutExtension(inputPath);
         var destination = Path.Combine(outputDirectory, $"{title}.premiere.mp4");
 
-        var args = string.Join(' ', new[]
+        var args = string.Join(" ", new[]
         {
             "-y",
             $"-i \"{inputPath}\"",
@@ -53,16 +53,28 @@ public sealed class FfmpegService
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start ffmpeg.");
-        await ReadTranscodeProgressAsync(process.StandardError, metadata.Duration, progress, cancellationToken).ConfigureAwait(false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-        if (process.ExitCode != 0)
+        var process = Process.Start(startInfo);
+        if (process == null)
         {
-            throw new InvalidOperationException("ffmpeg failed to transcode the file.");
+            throw new InvalidOperationException("Failed to start ffmpeg.");
         }
 
-        return destination;
+        try
+        {
+            await ReadTranscodeProgressAsync(process.StandardError, metadata.Duration, progress, cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException("ffmpeg failed to transcode the file.");
+            }
+
+            return destination;
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     private static async Task ReadTranscodeProgressAsync(StreamReader reader, TimeSpan duration, IProgress<DownloadProgress> progress, CancellationToken cancellationToken)
@@ -94,4 +106,5 @@ public sealed class FfmpegService
             Status = "Transcoding complete"
         });
     }
+}
 }

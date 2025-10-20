@@ -1,7 +1,7 @@
 using System.Windows.Forms;
 
-namespace SmartYouTubeDownloader;
-
+namespace SmartYouTubeDownloader
+{
 partial class MainForm
 {
     private System.ComponentModel.IContainer components;
@@ -157,7 +157,7 @@ partial class MainForm
         //
         btnTools.Text = "Tools";
         btnTools.Dock = DockStyle.Right;
-        btnTools.Click += (_, _) => menuTools.Show(btnTools, 0, btnTools.Height);
+        btnTools.Click += (sender, args) => menuTools.Show(btnTools, 0, btnTools.Height);
         //
         // pnlAdvancedHost
         //
@@ -320,4 +320,5 @@ partial class MainForm
         pnlAdvanced.Controls.Add(label, 0, rowIndex);
         pnlAdvanced.Controls.Add(control, 1, rowIndex);
     }
+}
 }

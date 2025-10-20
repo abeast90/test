@@ -12,12 +12,12 @@ using SmartYouTubeDownloader.Services;
 using SmartYouTubeDownloader.Settings;
 using SmartYouTubeDownloader.Utilities;
 
-namespace SmartYouTubeDownloader;
-
+namespace SmartYouTubeDownloader
+{
 public partial class MainForm : Form
 {
     private readonly string _appToolsDirectory = Path.Combine(AppContext.BaseDirectory, "tools");
-    private readonly List<string> _batchUrls = new();
+    private readonly List<string> _batchUrls = new List<string>();
     private readonly UserSettings _settings;
     private VideoMetadata? _currentMetadata;
     private string? _ytDlpPath;
@@ -52,15 +52,15 @@ public partial class MainForm : Form
         ToggleProxyInputs();
         ToggleBatchMode();
 
-        btnFetch.Click += async (_, _) => await FetchMetadataAsync();
-        btnDownload.Click += async (_, _) => await DownloadAsync();
-        btnBrowse.Click += (_, _) => BrowseSaveFolder();
-        btnOpen.Click += (_, _) => OpenSaveFolder();
-        ckAdvanced.CheckedChanged += (_, _) => ToggleAdvanced();
-        ckMulti.CheckedChanged += (_, _) => ToggleBatchMode();
-        btnAddUrl.Click += (_, _) => EnqueueCurrentUrl();
-        ckUseProxy.CheckedChanged += (_, _) => ToggleProxyInputs();
-        FormClosing += (_, _) => PersistSettings();
+        btnFetch.Click += async (sender, args) => await FetchMetadataAsync();
+        btnDownload.Click += async (sender, args) => await DownloadAsync();
+        btnBrowse.Click += (sender, args) => BrowseSaveFolder();
+        btnOpen.Click += (sender, args) => OpenSaveFolder();
+        ckAdvanced.CheckedChanged += (sender, args) => ToggleAdvanced();
+        ckMulti.CheckedChanged += (sender, args) => ToggleBatchMode();
+        btnAddUrl.Click += (sender, args) => EnqueueCurrentUrl();
+        ckUseProxy.CheckedChanged += (sender, args) => ToggleProxyInputs();
+        FormClosing += (sender, args) => PersistSettings();
         toolTip.SetToolTip(cbQuality, "Select the maximum quality to download.");
         toolTip.SetToolTip(ckAudio, "Download audio only using the best available quality.");
         toolTip.SetToolTip(rbCompatOn, "Re-encode to a Premiere-compatible H.264 + AAC MP4.");
@@ -79,14 +79,14 @@ public partial class MainForm : Form
     private void InitializeMenu()
     {
         menuTools.Items.Clear();
-        menuTools.Items.Add("Install/Update yt-dlp", null, async (_, _) => await InstallYtDlpAsync());
-        menuTools.Items.Add("Install/Update FFmpeg", null, async (_, _) => await InstallFfmpegAsync());
+        menuTools.Items.Add("Install/Update yt-dlp", null, async (sender, args) => await InstallYtDlpAsync());
+        menuTools.Items.Add("Install/Update FFmpeg", null, async (sender, args) => await InstallFfmpegAsync());
         menuTools.Items.Add(new ToolStripSeparator());
-        menuTools.Items.Add("Open tools folder", null, (_, _) => OpenFolder(UserSettings.GetToolsDirectory()));
-        menuTools.Items.Add("Open cache folder", null, (_, _) => OpenFolder(UserSettings.GetSettingsDirectory()));
-        menuTools.Items.Add("Clear temp files", null, (_, _) => ClearTempFiles());
+        menuTools.Items.Add("Open tools folder", null, (sender, args) => OpenFolder(UserSettings.GetToolsDirectory()));
+        menuTools.Items.Add("Open cache folder", null, (sender, args) => OpenFolder(UserSettings.GetSettingsDirectory()));
+        menuTools.Items.Add("Clear temp files", null, (sender, args) => ClearTempFiles());
         menuTools.Items.Add(new ToolStripSeparator());
-        menuTools.Items.Add("Reset settings", null, (_, _) => ResetSettings());
+        menuTools.Items.Add("Reset settings", null, (sender, args) => ResetSettings());
     }
 
     private async Task LocateToolsAsync()
@@ -323,8 +323,15 @@ public partial class MainForm : Form
             var existing = Directory.GetFiles(tbSave.Text, $"{baseName}.*");
             if (existing.Length > 0)
             {
-                collisionStrategy ??= PromptForCollisionStrategy(existing[0]);
-                _sessionCollisionStrategy ??= collisionStrategy;
+                if (!collisionStrategy.HasValue)
+                {
+                    collisionStrategy = PromptForCollisionStrategy(existing[0]);
+                }
+
+                if (!_sessionCollisionStrategy.HasValue)
+                {
+                    _sessionCollisionStrategy = collisionStrategy;
+                }
                 if (collisionStrategy == CollisionStrategy.Skip)
                 {
                     return null;
@@ -352,7 +359,10 @@ public partial class MainForm : Form
         }
         else
         {
-            collisionStrategy ??= CollisionStrategy.AutoRename;
+            if (!collisionStrategy.HasValue)
+            {
+                collisionStrategy = CollisionStrategy.AutoRename;
+            }
         }
 
         return new DownloadRequest
@@ -379,12 +389,15 @@ public partial class MainForm : Form
         }
 
         var result = MessageBox.Show(this, "File exists. Choose Yes to overwrite, No to skip, Cancel to auto-rename future collisions.", "File exists", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button3);
-        return result switch
+        switch (result)
         {
-            DialogResult.Yes => CollisionStrategy.Overwrite,
-            DialogResult.No => CollisionStrategy.Skip,
-            _ => CollisionStrategy.AutoRename
-        };
+            case DialogResult.Yes:
+                return CollisionStrategy.Overwrite;
+            case DialogResult.No:
+                return CollisionStrategy.Skip;
+            default:
+                return CollisionStrategy.AutoRename;
+        }
     }
 
     private string? BuildProxy()
@@ -413,10 +426,12 @@ public partial class MainForm : Form
 
     private async Task<string> PerformToolInstallAsync(Func<ToolInstaller, IProgress<string>, Task<string>> installerAction)
     {
-        using var client = new HttpClient();
-        var installer = new ToolInstaller(client);
-        var progressReporter = new Progress<string>(UpdateStatus);
-        return await installerAction(installer, progressReporter).ConfigureAwait(true);
+        using (var client = new HttpClient())
+        {
+            var installer = new ToolInstaller(client);
+            var progressReporter = new Progress<string>(UpdateStatus);
+            return await installerAction(installer, progressReporter).ConfigureAwait(true);
+        }
     }
 
     private async Task InstallYtDlpAsync()
@@ -576,14 +591,15 @@ public partial class MainForm : Form
 
     private void BrowseSaveFolder()
     {
-        using var dialog = new FolderBrowserDialog
+        using (var dialog = new FolderBrowserDialog
         {
             SelectedPath = tbSave.Text
-        };
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+        })
         {
-            tbSave.Text = dialog.SelectedPath;
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                tbSave.Text = dialog.SelectedPath;
+            }
         }
     }
 
@@ -624,7 +640,7 @@ public partial class MainForm : Form
         var panel = new FlowLayoutPanel { AutoSize = true };
         var label = new Label { Text = url, AutoSize = true, MaximumSize = new System.Drawing.Size(400, 0) };
         var removeButton = new Button { Text = "Remove", AutoSize = true };
-        removeButton.Click += (_, _) => RemoveUrl(url, panel);
+        removeButton.Click += (sender, args) => RemoveUrl(url, panel);
         panel.Controls.Add(label);
         panel.Controls.Add(removeButton);
         pnlMultiList.Controls.Add(panel, 0, row);
@@ -697,8 +713,25 @@ public partial class MainForm : Form
         lblStatus.Text = text;
     }
 
-    private sealed record QualityItem(string Label, string? FormatId, int? MaxHeight)
+    private sealed class QualityItem
     {
-        public override string ToString() => Label;
+        public QualityItem(string label, string? formatId, int? maxHeight)
+        {
+            Label = label;
+            FormatId = formatId;
+            MaxHeight = maxHeight;
+        }
+
+        public string Label { get; }
+
+        public string? FormatId { get; }
+
+        public int? MaxHeight { get; }
+
+        public override string ToString()
+        {
+            return Label;
+        }
     }
+}
 }

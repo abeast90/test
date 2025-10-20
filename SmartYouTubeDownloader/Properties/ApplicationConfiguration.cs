@@ -1,14 +1,15 @@
 using System;
 using System.Windows.Forms;
 
-namespace SmartYouTubeDownloader.Properties;
-
-internal static class ApplicationConfiguration
+namespace SmartYouTubeDownloader.Properties
 {
-    public static void Initialize()
+    internal static class ApplicationConfiguration
     {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        public static void Initialize()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        }
     }
 }

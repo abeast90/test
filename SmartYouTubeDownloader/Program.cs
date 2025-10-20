@@ -1,14 +1,15 @@
 using System;
 using System.Windows.Forms;
 
-namespace SmartYouTubeDownloader;
-
-internal static class Program
+namespace SmartYouTubeDownloader
 {
-    [STAThread]
-    private static void Main()
+    internal static class Program
     {
-        ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        [STAThread]
+        private static void Main()
+        {
+            ApplicationConfiguration.Initialize();
+            Application.Run(new MainForm());
+        }
     }
 }

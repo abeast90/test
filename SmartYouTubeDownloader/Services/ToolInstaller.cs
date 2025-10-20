@@ -5,8 +5,8 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace SmartYouTubeDownloader.Services;
-
+namespace SmartYouTubeDownloader.Services
+{
 public sealed class ToolInstaller
 {
     private readonly HttpClient _httpClient;
@@ -34,15 +34,17 @@ public sealed class ToolInstaller
 
         try
         {
-            using var archive = ZipFile.OpenRead(tempFile);
-            foreach (var entry in archive.Entries)
+            using (var archive = ZipFile.OpenRead(tempFile))
             {
-                if (entry.FullName.EndsWith("/ffmpeg.exe", StringComparison.OrdinalIgnoreCase) ||
-                    entry.FullName.EndsWith("\\ffmpeg.exe", StringComparison.OrdinalIgnoreCase))
+                foreach (var entry in archive.Entries)
                 {
-                    var destination = Path.Combine(destinationDirectory, "ffmpeg.exe");
-                    entry.ExtractToFile(destination, overwrite: true);
-                    return destination;
+                    if (entry.FullName.EndsWith("/ffmpeg.exe", StringComparison.OrdinalIgnoreCase) ||
+                        entry.FullName.EndsWith("\\ffmpeg.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var destination = Path.Combine(destinationDirectory, "ffmpeg.exe");
+                        entry.ExtractToFile(destination, overwrite: true);
+                        return destination;
+                    }
                 }
             }
         }
@@ -63,24 +65,31 @@ public sealed class ToolInstaller
 
     private async Task DownloadFileAsync(Uri uri, string destination, IProgress<string>? progress, CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using var fileStream = File.Create(destination);
-        var buffer = new byte[81920];
-        long totalRead = 0;
-        while (true)
+        using (var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
+            response.EnsureSuccessStatusCode();
 
-            await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-            totalRead += read;
-            progress?.Report($"Downloaded {totalRead / 1024.0 / 1024.0:F1} MiB");
+            using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+            {
+                using (var fileStream = File.Create(destination))
+                {
+                    var buffer = new byte[81920];
+                    long totalRead = 0;
+                    while (true)
+                    {
+                        var read = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+                        if (read == 0)
+                        {
+                            break;
+                        }
+
+                        await fileStream.WriteAsync(buffer, 0, read, cancellationToken).ConfigureAwait(false);
+                        totalRead += read;
+                        progress?.Report($"Downloaded {totalRead / 1024.0 / 1024.0:F1} MiB");
+                    }
+                }
+            }
         }
     }
+}
 }
